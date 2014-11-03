@@ -1,12 +1,16 @@
+// Author: Manuel Schmid
+// License: see LICENSE file
+
+#include <iostream> // cout
 #include <boost/program_options.hpp>
 #include <boost/iostreams/device/mapped_file.hpp>
-#include "Eigen/Dense"
-#include <iostream> // cout
+//#include "Eigen/Dense"
+#include "InputInterface.h"
 
 int main(int argc, char *argv[]) {
 
     // type for data input
-    using scalar = float;
+    using Scalar = float;
 
     // program options
     std::string file_name;
@@ -33,23 +37,27 @@ int main(int argc, char *argv[]) {
     // po:notify tests for valid arguments, so do this after help
     po::notify(po_vm);
 
+    // set up input file interface
+    InputInterface<Scalar> input(dimensions, reduced);
+
+
     // open memory mapped file
     std::cout << "Input File: " << file_name << std::endl;
     //boost::iostreams::mapped_file_params file_params(file_name);
     boost::iostreams::mapped_file_source file(file_name);
     size_t n_entries = 256*256*65*200;
-    size_t n_bytes = n_entries * sizeof(scalar);
+    size_t n_bytes = n_entries * sizeof(Scalar);
     //file.open(file_name);
 
     if (file.is_open()) {
-        const scalar *data = reinterpret_cast<const scalar*>(file.data());
+        const Scalar *data = reinterpret_cast<const Scalar*>(file.data());
         std::cout << "file size: " << file.size() << ", should be " << n_bytes << std::endl;
         std::cout << "first values:" << std::endl;
         for (int i=200000; i<200010; i++) {
             std::cout << data[i] << std::endl;
         }
 
-        std::getchar();
+        //std::getchar(); // wait for ENTER
         file.close();
     } else {
         std::cerr << "ERROR: Could not open file: " << file_name << std::endl;
