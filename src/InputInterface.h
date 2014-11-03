@@ -1,9 +1,10 @@
 #pragma once
 #include <iostream>
-//#include "Eigen/Dense"
+#include <boost/iostreams/device/mapped_file.hpp>
+#include "Eigen/Dense"
+#include "matrix_definition.h"
 
-template<class Scalar>
-class InputInterface {
+template<typename Scalar> class InputInterface {
 
 public:
     InputInterface(std::vector<int> dimensions, std::vector<bool> reduced) {
@@ -24,10 +25,41 @@ public:
         dump_maps();
     }
 
+    Matrix<Scalar> read(std::string file_name) {
+
+        std::cout << "Input File: " << file_name << std::endl;
+        boost::iostreams::mapped_file_source file(file_name);
+
+        if (file.is_open()) {
+
+            // raise error if sizes do not match
+            size_t n_bytes = NR_ * NC_ * sizeof(Scalar);
+            if (file.size() != n_bytes) {
+                std::cerr << "ERROR: File does not match specified size (expected " <<
+                    n_bytes << "B, file has " << file.size() << "B)." << std::endl;
+                file.close();
+                exit(1);
+            }
+
+            // create matrix and load data from file
+            std::cout << "File opened successfully." << std::endl;
+            const Scalar *data = reinterpret_cast<const Scalar*>(file.data());
+            Matrix<Scalar> matrix = load_matrix(data);
+            file.close();
+            return matrix;
+
+        } else {
+            std::cerr << "ERROR: Could not open file: " << file_name << std::endl;
+            exit(1);
+        }
+    }
+
+
 private:
     int ND_; // number of dimensions
     int NR_; // number of rows
     int NC_; // number of columns
+    int N_;  // total number of values
     std::vector<int>  dims_;    // length of dimensions
     std::vector<bool> reduced_; // whether dimensions are reduced (along columns)
     std::vector<int>  row_map_; // interelement distances along rows
@@ -69,8 +101,46 @@ private:
         // set matrix size
         NR_ = row_interelement_distance;
         NC_ = col_interelement_distance;
+        N_  = NR_*NC_;
         std::cout << "Matrix size: " << NR_ << "x" << NC_ << std::endl;
     }
 
+    
+    /*
+     * observations along columns
+     * observations are reduced
+     * -> columns are reduced
+     */
+    Matrix<Scalar> load_matrix(const Scalar *data) {
+        Matrix<Scalar> matrix(NR_, NC_);
+
+        std::cout << "Reordering matrix... ";
+        bool carry;
+        std::vector<int> dim_index(ND_, 0);
+        int row_index, col_index;
+        for (int i=0; i<N_; i++) {
+        //for (int i=0; i<200000; i++) { // use this line for subset of values
+            row_index = 0;
+            col_index = 0;
+            carry = true;
+            for (int d=0; d<ND_; d++) {
+                row_index += dim_index[d] * row_map_[d];
+                col_index += dim_index[d] * col_map_[d];
+                // increment dim_index for next iteration
+                if (carry) {
+                    dim_index[d]++;
+                    if (dim_index[d] == dims_[d]) {
+                        dim_index[d] = 0;
+                    } else {
+                        carry = false;
+                    }
+                }
+            }
+            matrix(row_index, col_index) = data[i];
+        }
+        std::cout << "done" << std::endl;
+        //std::cout << matrix.bottomRightCorner(10,10) << std::endl;
+        return matrix;
+    }
 
 };

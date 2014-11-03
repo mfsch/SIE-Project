@@ -4,7 +4,8 @@
 #include <iostream> // cout
 #include <boost/program_options.hpp>
 #include <boost/iostreams/device/mapped_file.hpp>
-//#include "Eigen/Dense"
+#include "Eigen/Dense"
+#include "matrix_definition.h"
 #include "InputInterface.h"
 
 int main(int argc, char *argv[]) {
@@ -39,30 +40,9 @@ int main(int argc, char *argv[]) {
 
     // set up input file interface
     InputInterface<Scalar> input(dimensions, reduced);
+    Matrix<Scalar> matrix = input.read(file_name);
 
-
-    // open memory mapped file
-    std::cout << "Input File: " << file_name << std::endl;
-    //boost::iostreams::mapped_file_params file_params(file_name);
-    boost::iostreams::mapped_file_source file(file_name);
-    size_t n_entries = 256*256*65*200;
-    size_t n_bytes = n_entries * sizeof(Scalar);
-    //file.open(file_name);
-
-    if (file.is_open()) {
-        const Scalar *data = reinterpret_cast<const Scalar*>(file.data());
-        std::cout << "file size: " << file.size() << ", should be " << n_bytes << std::endl;
-        std::cout << "first values:" << std::endl;
-        for (int i=200000; i<200010; i++) {
-            std::cout << data[i] << std::endl;
-        }
-
-        //std::getchar(); // wait for ENTER
-        file.close();
-    } else {
-        std::cerr << "ERROR: Could not open file: " << file_name << std::endl;
-        exit(1);
-    }
+    std::getchar(); // wait for ENTER
 
     return 0;
 }
