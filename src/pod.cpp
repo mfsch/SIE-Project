@@ -7,6 +7,7 @@
 #include "Eigen/Dense"
 #include "matrix_definition.h"
 #include "InputInterface.h"
+#include "Decomposition.h"
 
 int main(int argc, char *argv[]) {
 
@@ -42,7 +43,9 @@ int main(int argc, char *argv[]) {
     InputInterface<Scalar> input(dimensions, reduced);
     Matrix<Scalar> matrix = input.read(file_name);
 
-    std::getchar(); // wait for ENTER
+    // get N largest eigenvectors
+    Decomposition<Scalar> pod(matrix, 5);
 
+    // program has run successfully
     return 0;
 }

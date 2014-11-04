@@ -44,7 +44,9 @@ public:
             // create matrix and load data from file
             std::cout << "File opened successfully." << std::endl;
             const Scalar *data = reinterpret_cast<const Scalar*>(file.data());
+            std::cout << "Reordering matrix... " << std::flush;
             Matrix<Scalar> matrix = load_matrix(data);
+            std::cout << "done" << std::endl;
             file.close();
             return matrix;
 
@@ -114,7 +116,6 @@ private:
     Matrix<Scalar> load_matrix(const Scalar *data) {
         Matrix<Scalar> matrix(NR_, NC_);
 
-        std::cout << "Reordering matrix... ";
         bool carry;
         std::vector<int> dim_index(ND_, 0);
         int row_index, col_index;
@@ -138,9 +139,7 @@ private:
             }
             matrix(row_index, col_index) = data[i];
         }
-        std::cout << "done" << std::endl;
         //std::cout << matrix.bottomRightCorner(10,10) << std::endl;
         return matrix;
     }
-
 };
