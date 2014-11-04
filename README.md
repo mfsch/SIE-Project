@@ -8,8 +8,6 @@ To-do list
 ----------
 
 * Add license information to source files.
-* Principal component analysis for reordered matrix.
 * MPI parallelization.
 * Multiple input files.
 * Output to file.
-* Almost everything else :)
