@@ -26,7 +26,26 @@ public:
         row_map_ = std::vector<int>(ND_);
         col_map_ = std::vector<int>(ND_);
 
+        /*
+         * TODO for parallelization:
+         * - adapt code for reading to only read subset 
+         */
+
+        std::vector<int> pd = process_distribution();
+        std::vector<int> dim_index = indices_along_dimensions(pd);
+        set_up_ranges(dim_index, pd);
         set_up_maps();
+
+        // dump some information for debugging
+        if (!mpi_rank_) {
+            std::cout << "Process distribution:";
+            for (int i=0;i<ND_;i++) std::cout << " " << pd[i];
+            std::cout << std::endl << std::flush;
+        }
+        std::cout << "Indices for rank " << mpi_rank_ << ":  ";
+        for (int i=0;i<ND_;i++) std::cout << " " << dim_index[i];
+        std::cout << std::endl << std::flush;
+        dump_ranges();
         dump_maps();
     }
 
@@ -70,8 +89,21 @@ private:
     int N_;  // total number of values
     std::vector<int>  dims_;    // length of dimensions
     std::vector<bool> reduced_; // whether dimensions are reduced (along columns)
+    std::vector<int>  start_; // interelement distances along rows
+    std::vector<int>  count_; // interelement distances along rows
     std::vector<int>  row_map_; // interelement distances along rows
     std::vector<int>  col_map_; // interelement distances along column
+
+    /*
+     * Convenience function for development, no real use.
+     */
+    void dump_ranges() {
+        std::cout << "Ranges for rank " << mpi_rank_ << ":";
+        for (int d=0; d<ND_; d++) {
+            std::cout << " " << start_[d] << "-" << start_[d] + count_[d] - 1;
+        }
+        std::cout << std::endl << std::flush;
+    }
 
     /*
      * Convenience function for development, no real use.
@@ -84,6 +116,71 @@ private:
         std::cout << "col map:\t";
         for (int i=0; i<ND_; i++) { std::cout << col_map_[i] << "\t"; }
         std::cout << std::endl;
+    }
+
+    /*
+     * This function builds a vector with the number of MPI processes along
+     * each dimension. The product of this vector is equal to the total
+     * number of MPI processes. We assume this number to be a power of 2.
+     */
+    std::vector<int> process_distribution() {
+        int N = mpi_size_;
+        int d = 0;
+        std::vector<int> pd(ND_,1);
+        while (N>1) {
+            if (!reduced_[d]) {// do not distribute reduced dimensions
+                pd[d] *= 2;
+                if (N%2) {
+                    if (!mpi_rank_) std::cerr << "ERROR: The number of MPI processes must be divisible by 2." << std::endl;
+                    exit(1);
+                }
+                N /= 2;
+            }
+            d = (d+1)%ND_;
+        }
+        return pd;
+    }
+
+    std::vector<int> indices_along_dimensions(std::vector<int> pd) {
+        std::vector<int> dim_index(ND_,0);
+        int r = mpi_rank_;
+        int s = mpi_size_;
+        for (int d=0; d<ND_; d++) {
+            //if (reduced_[d]) continue;
+            s /= pd[d];
+            dim_index[d] = r / s;
+            r = r % s;
+        }
+        return dim_index;
+    }
+
+    /*
+     * Here, we decide which part of the data we read in the
+     * current MPI process, based on its rank. We make an extra
+     * effort to distribute it as evenly as possible as the actual
+     * number of values each process reads is the product of the
+     * counts. If we just always give the remainder to the last
+     * rank, this process will end up with a lot more data and the
+     * computation is not very balanced anymore.
+     */
+    void set_up_ranges(std::vector<int> dim_index, std::vector<int> pd) {
+
+        count_ = std::vector<int>(ND_);
+        start_ = std::vector<int>(ND_);
+
+        for (int d=0; d<ND_; d++) {
+            count_[d] = dims_[d] / pd[d];
+            start_[d] = count_[d] * dim_index[d];
+
+            // distribute remainder
+            int remainder = dims_[d] % pd[d];
+            if (dim_index[d] < remainder) {
+                count_[d] += 1;
+                start_[d] += dim_index[d];
+            } else {
+                start_[d] += remainder;
+            }
+        }
     }
 
     void set_up_maps() {
