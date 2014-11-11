@@ -3,8 +3,7 @@
 
 #include <iostream> // cout
 #include <boost/program_options.hpp>
-#include <boost/iostreams/device/mapped_file.hpp>
-#include "Eigen/Dense"
+#include <mpi.h>
 #include "matrix_definition.h"
 #include "InputInterface.h"
 #include "Decomposition.h"
@@ -13,6 +12,12 @@ int main(int argc, char *argv[]) {
 
     // type for data input
     using Scalar = float;
+
+    // initialize mpi
+    MPI_Init(&argc,&argv);
+    int mpi_size, mpi_rank;
+    MPI_Comm_size(MPI_COMM_WORLD, &mpi_size);
+    MPI_Comm_rank(MPI_COMM_WORLD, &mpi_rank);
 
     // program options
     std::string file_name;
@@ -32,7 +37,7 @@ int main(int argc, char *argv[]) {
     po::store(po::command_line_parser(argc, argv).options(po_desc).run(), po_vm);
 
     if (po_vm.count("help")) {
-        std::cout << po_desc << std::endl;
+        if (!mpi_rank) std::cout << po_desc << std::endl;
         return 0;
     }
 
@@ -45,6 +50,9 @@ int main(int argc, char *argv[]) {
 
     // get N largest eigenvectors
     Decomposition<Scalar> pod(matrix, 5);
+
+    // finalize mpi
+    MPI_Finalize();
 
     // program has run successfully
     return 0;

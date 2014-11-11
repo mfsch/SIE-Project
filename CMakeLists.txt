@@ -6,9 +6,11 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} --std=c++11")
 
 # find boost
 find_package(Boost COMPONENTS program_options iostreams REQUIRED)
-MESSAGE( STATUS "Boost_INCLUDE_DIRS: " ${Boost_INCLUDE_DIRS})
-MESSAGE( STATUS "Boost_LIBRARIES: " ${Boost_LIBRARIES})
 include_directories(${Boost_INCLUDE_DIRS})
+
+# find mpi
+find_package(MPI REQUIRED)
+include_directories(${MPI_CXX_INCLUDE_PATH})
 
 # include eigen
 include_directories("${CMAKE_CURRENT_SOURCE_DIR}/eigen")
@@ -18,3 +20,4 @@ add_executable(pod src/pod.cpp)
 
 # link libraries
 target_link_libraries(pod ${Boost_LIBRARIES})
+target_link_libraries(pod ${MPI_CXX_LIBRARIES})

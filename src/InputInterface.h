@@ -1,7 +1,8 @@
 #pragma once
 #include <iostream>
 #include <boost/iostreams/device/mapped_file.hpp>
-#include "Eigen/Dense"
+#include <Eigen/Dense>
+#include <mpi.h>
 #include "matrix_definition.h"
 
 template<typename Scalar> class InputInterface {
@@ -9,9 +10,13 @@ template<typename Scalar> class InputInterface {
 public:
     InputInterface(std::vector<int> dimensions, std::vector<bool> reduced) {
 
+        // save information about mpi
+        MPI_Comm_size(MPI_COMM_WORLD, &mpi_size_);
+        MPI_Comm_rank(MPI_COMM_WORLD, &mpi_rank_);
+
         // make sure both vectors are the same length
         if (dimensions.size() != reduced.size()) {
-            std::cerr << "ERROR: The number of dimensions for the argument '--dimensions' and '--reduced' must be the same." << std::endl;
+            if (!mpi_rank_) std::cerr << "ERROR: The number of dimensions for the argument '--dimensions' and '--reduced' must be the same." << std::endl;
             exit(1);
         }
         ND_ = dimensions.size();
@@ -27,7 +32,7 @@ public:
 
     Matrix<Scalar> read(std::string file_name) {
 
-        std::cout << "Input File: " << file_name << std::endl;
+        if (!mpi_rank_) std::cout << "Input File: " << file_name << std::endl;
         boost::iostreams::mapped_file_source file(file_name);
 
         if (file.is_open()) {
@@ -35,29 +40,30 @@ public:
             // raise error if sizes do not match
             size_t n_bytes = NR_ * NC_ * sizeof(Scalar);
             if (file.size() != n_bytes) {
-                std::cerr << "ERROR: File does not match specified size (expected " <<
-                    n_bytes << "B, file has " << file.size() << "B)." << std::endl;
+                if (!mpi_rank_) std::cerr << "ERROR: File does not match specified size (expected " << n_bytes << "B, file has " << file.size() << "B)." << std::endl;
                 file.close();
                 exit(1);
             }
 
             // create matrix and load data from file
-            std::cout << "File opened successfully." << std::endl;
+            if (!mpi_rank_) std::cout << "File opened successfully." << std::endl;
             const Scalar *data = reinterpret_cast<const Scalar*>(file.data());
-            std::cout << "Reordering matrix... " << std::flush;
+            if (!mpi_rank_) std::cout << "Reordering matrix... " << std::flush;
             Matrix<Scalar> matrix = load_matrix(data);
-            std::cout << "done" << std::endl;
+            if (!mpi_rank_) std::cout << "done" << std::endl;
             file.close();
             return matrix;
 
         } else {
-            std::cerr << "ERROR: Could not open file: " << file_name << std::endl;
+            if (!mpi_rank_) std::cerr << "ERROR: Could not open file: " << file_name << std::endl;
             exit(1);
         }
     }
 
 
 private:
+    int mpi_size_;
+    int mpi_rank_;
     int ND_; // number of dimensions
     int NR_; // number of rows
     int NC_; // number of columns
@@ -71,6 +77,7 @@ private:
      * Convenience function for development, no real use.
      */
     void dump_maps() {
+        if (mpi_rank_) return; // do nothing unless rank 0
         std::cout << "row map:\t";
         for (int i=0; i<ND_; i++) { std::cout << row_map_[i] << "\t"; }
         std::cout << std::endl;
@@ -104,7 +111,7 @@ private:
         NR_ = row_interelement_distance;
         NC_ = col_interelement_distance;
         N_  = NR_*NC_;
-        std::cout << "Matrix size: " << NR_ << "x" << NC_ << std::endl;
+        if (!mpi_rank_) std::cout << "Matrix size: " << NR_ << "x" << NC_ << std::endl;
     }
 
     

@@ -1,5 +1,6 @@
 #include <iostream>
-#include "Eigen/Sparse"
+#include <Eigen/Sparse>
+#include <mpi.h>
 
 template<typename Scalar> class Decomposition {
 
@@ -12,15 +13,22 @@ public:
      */
     Decomposition(Matrix<Scalar> &X, int M) {
         
-        std::cout << "Subtracting mean... " << std::flush;
+        // save information about mpi
+        MPI_Comm_size(MPI_COMM_WORLD, &mpi_size_);
+        MPI_Comm_rank(MPI_COMM_WORLD, &mpi_rank_);
+
+        if (!mpi_rank_) std::cout << "Subtracting mean... " << std::flush;
         subtract_mean(X);
-        std::cout << "done" << X.mean() << std::endl;
+        if (!mpi_rank_) std::cout << "done" << X.mean() << std::endl;
 
         lanczos(X, M);
 
     }
 
 private:
+
+    int mpi_size_;
+    int mpi_rank_;
 
     RowVector<Scalar> mean_;
     Matrix<Scalar> eigenvectors_;
@@ -36,7 +44,7 @@ private:
      * eigenvalues and the corresponding eigenvectors of the matrix
      * X.T*X (dimensions NxN)
      */
-    void lanczos(Matrix<Scalar> &X, int M, int max_it = 20) {
+    void lanczos(Matrix<Scalar> &X, int M, int max_it = 10) {
 
         int N = X.cols();
         int Nr = X.rows();
@@ -76,7 +84,7 @@ private:
 
             // test orthogonality
             Scalar orth = (V.leftCols(i+2).transpose()*V.leftCols(i+2) - Eigen::MatrixXf::Identity(i+2, i+2)).norm();
-            std::cout << "orthogonality norm: " << orth << std::endl;
+            if (!mpi_rank_) std::cout << "orthogonality norm: " << orth << std::endl;
 
             //H.cornerUpperLeft(i, i);
             if (i>=M) {
@@ -92,7 +100,7 @@ private:
                 //std::cout << A.rows() << "x" << A.cols() << std::endl;
 
 
-                std::cout << "eigenvector norm: " << (X.transpose() * (X * eigenvectors_) / (Nr-1) - eigenvectors_ * eigenvalues_.asDiagonal()).norm() << std::endl;
+                if (!mpi_rank_) std::cout << "eigenvector norm: " << (X.transpose() * (X * eigenvectors_) / (Nr-1) - eigenvectors_ * eigenvalues_.asDiagonal()).norm() << std::endl;
             }
         }
     }
