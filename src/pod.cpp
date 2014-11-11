@@ -15,9 +15,6 @@ int main(int argc, char *argv[]) {
 
     // initialize mpi
     MPI_Init(&argc,&argv);
-    int mpi_size, mpi_rank;
-    MPI_Comm_size(MPI_COMM_WORLD, &mpi_size);
-    MPI_Comm_rank(MPI_COMM_WORLD, &mpi_rank);
 
     // program options
     std::string file_name;
@@ -36,7 +33,10 @@ int main(int argc, char *argv[]) {
     po::variables_map po_vm;
     po::store(po::command_line_parser(argc, argv).options(po_desc).run(), po_vm);
 
+    // only first mpi process prints help, then all exit
     if (po_vm.count("help")) {
+        int mpi_rank;
+        MPI_Comm_rank(MPI_COMM_WORLD, &mpi_rank);
         if (!mpi_rank) std::cout << po_desc << std::endl;
         return 0;
     }
