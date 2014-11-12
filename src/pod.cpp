@@ -11,7 +11,8 @@
 int main(int argc, char *argv[]) {
 
     // type for data input
-    using Scalar = float;
+    using InputType = float;
+    using Scalar = double;
 
     // initialize mpi
     MPI::Init(argc, argv);
@@ -43,7 +44,7 @@ int main(int argc, char *argv[]) {
     po::notify(po_vm);
 
     // set up input file interface
-    InputInterface<Scalar> input(dimensions, reduced);
+    InputInterface<InputType, Scalar> input(dimensions, reduced);
     MPI::COMM_WORLD.Barrier(); // for aesthetic output only
     Matrix<Scalar> matrix = input.read(file_name);
 

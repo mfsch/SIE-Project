@@ -60,7 +60,7 @@ private:
      * doesn't change the eigenvectors, we can omit this.
      */
     void lanczos(const Matrix<Scalar> &X, const int M, const int global_rows,
-            const int max_it = 40) {
+            const int max_it = 20) {
 
         // saved for convenience
         int N = X.cols();
@@ -111,7 +111,7 @@ private:
 
             // test orthogonality
             Scalar orth = (V.leftCols(i+2).transpose()*V.leftCols(i+2) -
-                    Eigen::MatrixXf::Identity(i+2, i+2)).norm();
+                    Matrix<Scalar>::Identity(i+2, i+2)).norm();
             //if (!mpi_rank_) std::cout << "Orthogonality norm: " << orth << std::endl;
 
             // only find eigenvectors after subspace is large enough

@@ -8,6 +8,5 @@ To-do list
 ----------
 
 * Add license information to source files.
-* MPI parallelization.
 * Multiple input files.
 * Output to file.

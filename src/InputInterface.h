@@ -5,7 +5,7 @@
 #include <mpi.h>
 #include "matrix_definition.h"
 
-template<typename Scalar> class InputInterface {
+template<typename InputType, typename Scalar> class InputInterface {
 
 public:
 
@@ -42,7 +42,7 @@ public:
         if (file.is_open()) {
 
             // raise error if sizes do not match
-            size_t n_bytes = N_global_ * sizeof(Scalar);
+            size_t n_bytes = N_global_ * sizeof(InputType);
             if (file.size() != n_bytes) {
                 if (!mpi_rank_) std::cerr << "ERROR: File does not match "
                         << "specified size (expected " << n_bytes << "B, file "
@@ -53,7 +53,7 @@ public:
 
             // create matrix and load data from file
             if (!mpi_rank_) std::cout << "File opened successfully." << std::endl;
-            const Scalar *data = reinterpret_cast<const Scalar*>(file.data());
+            const InputType *data = reinterpret_cast<const InputType*>(file.data());
             if (!mpi_rank_) std::cout << "Reordering matrix... " << std::flush;
             Matrix<Scalar> matrix = load_matrix(data);
             if (!mpi_rank_) std::cout << "done" << std::endl;
@@ -270,7 +270,7 @@ private:
      * current MPI process and reorders it according to the command
      * line options. It uses the information built up in the constructor.
      */
-    Matrix<Scalar> load_matrix(const Scalar *data) {
+    Matrix<Scalar> load_matrix(const InputType *data) {
 
         Matrix<Scalar> matrix(NR_, NC_);
 
@@ -328,7 +328,7 @@ private:
             }
 
             // copy value to memory
-            matrix(row_index, col_index) = data[global_index];
+            matrix(row_index, col_index) = static_cast<Scalar>(data[global_index]);
         }
         return matrix;
     }
