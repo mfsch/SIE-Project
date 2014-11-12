@@ -14,7 +14,7 @@ int main(int argc, char *argv[]) {
     using Scalar = float;
 
     // initialize mpi
-    MPI_Init(&argc,&argv);
+    MPI::Init(argc, argv);
 
     // program options
     std::string file_name;
@@ -35,9 +35,7 @@ int main(int argc, char *argv[]) {
 
     // only first mpi process prints help, then all exit
     if (po_vm.count("help")) {
-        int mpi_rank;
-        MPI_Comm_rank(MPI_COMM_WORLD, &mpi_rank);
-        if (!mpi_rank) std::cout << po_desc << std::endl;
+        if (!MPI::COMM_WORLD.Get_rank()) std::cout << po_desc << std::endl;
         return 0;
     }
 
@@ -52,7 +50,7 @@ int main(int argc, char *argv[]) {
     Decomposition<Scalar> pod(matrix, 5);
 
     // finalize mpi
-    MPI_Finalize();
+    MPI::Finalize();
 
     // program has run successfully
     return 0;

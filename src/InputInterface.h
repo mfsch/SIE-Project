@@ -9,11 +9,7 @@ template<typename Scalar> class InputInterface {
 
 public:
 
-    InputInterface(std::vector<int> dimensions, std::vector<bool> reduced) {
-
-        // save information about mpi
-        MPI_Comm_size(MPI_COMM_WORLD, &mpi_size_);
-        MPI_Comm_rank(MPI_COMM_WORLD, &mpi_rank_);
+    InputInterface(const std::vector<int> &dimensions, const std::vector<bool> &reduced) {
 
         // make sure both vectors are the same length
         if (dimensions.size() != reduced.size()) {
@@ -33,7 +29,7 @@ public:
     }
 
 
-    Matrix<Scalar> read(std::string file_name) {
+    Matrix<Scalar> read(const std::string &file_name) {
 
         if (!mpi_rank_) std::cout << "Input File: " << file_name << std::endl;
         boost::iostreams::mapped_file_source file(file_name);
@@ -68,9 +64,11 @@ public:
 
 private:
 
+    // C++11 allows for dynamic initialization of class members
+    const int mpi_size_ = MPI::COMM_WORLD.Get_size();
+    const int mpi_rank_ = MPI::COMM_WORLD.Get_rank();
+
     // set up in constructor
-    int mpi_size_;
-    int mpi_rank_;
     int ND_; // number of dimensions
 
     // set up in set_up_ranges()
@@ -96,37 +94,37 @@ private:
         for (int d=0; d<ND_; d++) std::cout << "\t" << start_[d] << "-"
             << start_[d] + count_[d] - 1;
         std::cout << std::endl;
-        MPI_Barrier(MPI_COMM_WORLD);
+        MPI::COMM_WORLD.Barrier();
 
         // maps
         std::cout << "Row map for rank " << mpi_rank_ << ":";
         for (int d=0; d<ND_; d++) { std::cout << "\t" << row_map_[d]; }
         std::cout << std::endl;
-        MPI_Barrier(MPI_COMM_WORLD);
+        MPI::COMM_WORLD.Barrier();
         std::cout << "Col map for rank " << mpi_rank_ << ":";
         for (int d=0; d<ND_; d++) { std::cout << "\t" << col_map_[d]; }
         std::cout << std::endl;
-        MPI_Barrier(MPI_COMM_WORLD);
+        MPI::COMM_WORLD.Barrier();
     }
 
 
     /*
      * Convenience function for development, no real use.
      */
-    void dump_pd_info(std::vector<int> &pd, std::vector<int> &dim_index) {
+    void dump_pd_info(const std::vector<int> &pd, const std::vector<int> &dim_index) {
         // process distribution
         if (!mpi_rank_) {
             std::cout << "Process distribution:";
             for (int i=0;i<ND_;i++) std::cout << "\t" << pd[i];
             std::cout << std::endl;
         }
-        MPI_Barrier(MPI_COMM_WORLD);
+        MPI::COMM_WORLD.Barrier();
 
         // dimension indices
         std::cout << "Indices for rank " << mpi_rank_ << ":";
         for (int d=0;d<ND_;d++) std::cout << "\t" << dim_index[d];
         std::cout << std::endl;
-        MPI_Barrier(MPI_COMM_WORLD);
+        MPI::COMM_WORLD.Barrier();
     }
 
 
@@ -135,7 +133,7 @@ private:
      * each dimension. The product of this vector is equal to the total
      * number of MPI processes. We assume this number to be a power of 2.
      */
-    std::vector<int> process_distribution(std::vector<bool> reduced) {
+    std::vector<int> process_distribution(const std::vector<bool> &reduced) {
         int N = mpi_size_;
         int d = 0;
         std::vector<int> pd(ND_,1);
@@ -154,7 +152,7 @@ private:
     }
 
 
-    std::vector<int> indices_along_dimensions(std::vector<int> pd) {
+    std::vector<int> indices_along_dimensions(const std::vector<int> &pd) {
         std::vector<int> dim_index(ND_,0);
         int r = mpi_rank_;
         int s = mpi_size_;
@@ -176,7 +174,7 @@ private:
      * rank, this process will end up with a lot more data and the
      * computation is not very balanced anymore.
      */
-    void set_up_ranges(std::vector<int> &dimensions, std::vector<bool> &reduced) {
+    void set_up_ranges(const std::vector<int> &dimensions, const std::vector<bool> &reduced) {
 
         // define process distribution and get index for current rank
         std::vector<int> pd = process_distribution(reduced);
@@ -203,7 +201,7 @@ private:
     }
 
 
-    void set_up_maps(std::vector<int> dimensions, std::vector<bool> reduced) {
+    void set_up_maps(const std::vector<int> &dimensions, const std::vector<bool> &reduced) {
 
         global_map_ = std::vector<int>(ND_);
         row_map_ = std::vector<int>(ND_);
@@ -237,7 +235,7 @@ private:
         NC_ = col_interelement_distance;
         N_  = NR_*NC_;
         std::cout << "Matrix size for rank " << mpi_rank_ << ": " << NR_ << "x" << NC_ << std::endl;
-        MPI_Barrier(MPI_COMM_WORLD);
+        MPI::COMM_WORLD.Barrier();
     }
 
     

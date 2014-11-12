@@ -11,12 +11,8 @@ public:
      * Caution: The matrix X is passed by reference and will be changed
      * by the algorithm, as the mean will be subtracted.
      */
-    Decomposition(Matrix<Scalar> &X, int M) {
+    Decomposition(Matrix<Scalar> &X, const int M) {
         
-        // save information about mpi
-        MPI_Comm_size(MPI_COMM_WORLD, &mpi_size_);
-        MPI_Comm_rank(MPI_COMM_WORLD, &mpi_rank_);
-
         if (!mpi_rank_) std::cout << "Subtracting mean... " << std::flush;
         subtract_mean(X);
         if (!mpi_rank_) std::cout << "done" << X.mean() << std::endl;
@@ -27,14 +23,19 @@ public:
 
 private:
 
-    int mpi_size_;
-    int mpi_rank_;
+    // C++11 allows for dynamic initialization of class members
+    const int mpi_size_ = MPI::COMM_WORLD.Get_size();
+    const int mpi_rank_ = MPI::COMM_WORLD.Get_rank();
 
     RowVector<Scalar> mean_;
     Matrix<Scalar> eigenvectors_;
     Matrix<Scalar> eigenvalues_;
 
     void subtract_mean(Matrix<Scalar> &X) {
+        //RowVector<Scalar> local_sum = X.colwise().sum();
+        //RowVector<Scalar> global_sum(NR_global_);
+        //global_sum.setZeros();
+        //PI_All
         mean_ = X.colwise().mean();
         X.rowwise() -= mean_;
     }
@@ -44,7 +45,7 @@ private:
      * eigenvalues and the corresponding eigenvectors of the matrix
      * X.T*X (dimensions NxN)
      */
-    void lanczos(Matrix<Scalar> &X, int M, int max_it = 10) {
+    void lanczos(const Matrix<Scalar> &X, const int M, const int max_it = 10) {
 
         int N = X.cols();
         int Nr = X.rows();
