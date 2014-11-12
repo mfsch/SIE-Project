@@ -1,25 +1,33 @@
+#pragma once
 #include <iostream>
 #include <Eigen/Sparse>
 #include <mpi.h>
 
+// MPI type helper
+template<typename T> struct mpi_helper {};
+template<> struct mpi_helper<float>  { const MPI::Datatype type = MPI::FLOAT; };
+template<> struct mpi_helper<double> { const MPI::Datatype type = MPI::DOUBLE; };
+
+
 template<typename Scalar> class Decomposition {
 
 public:
+
     /*
      * The constructor does all the work for the decomposition.
      * The N largest eigenvectors are saved internally.
      * Caution: The matrix X is passed by reference and will be changed
      * by the algorithm, as the mean will be subtracted.
      */
-    Decomposition(Matrix<Scalar> &X, const int M) {
+    Decomposition(Matrix<Scalar> &X, const int M, const int global_rows) {
         
         if (!mpi_rank_) std::cout << "Subtracting mean... " << std::flush;
-        subtract_mean(X);
-        if (!mpi_rank_) std::cout << "done" << X.mean() << std::endl;
+        subtract_mean(X, global_rows);
+        if (!mpi_rank_) std::cout << "done" << std::endl;
 
-        lanczos(X, M);
-
+        lanczos(X, M, global_rows);
     }
+
 
 private:
 
@@ -28,45 +36,63 @@ private:
     const int mpi_rank_ = MPI::COMM_WORLD.Get_rank();
 
     RowVector<Scalar> mean_;
+    ColVector<Scalar> eigenvalues_;
     Matrix<Scalar> eigenvectors_;
-    Matrix<Scalar> eigenvalues_;
 
-    void subtract_mean(Matrix<Scalar> &X) {
-        //RowVector<Scalar> local_sum = X.colwise().sum();
-        //RowVector<Scalar> global_sum(NR_global_);
-        //global_sum.setZeros();
-        //PI_All
-        mean_ = X.colwise().mean();
+
+    void subtract_mean(Matrix<Scalar> &X, const int global_rows) {
+        int N = X.cols();
+        RowVector<Scalar> local_sum = X.colwise().sum();
+        RowVector<Scalar> global_sum(N);
+        MPI::COMM_WORLD.Allreduce(local_sum.data(), global_sum.data(), N,
+                mpi_helper<Scalar>().type, MPI::SUM);
+        mean_ = global_sum / global_rows;
         X.rowwise() -= mean_;
     }
+
 
     /*
      * This function uses the Lanczos method to find the M largest
      * eigenvalues and the corresponding eigenvectors of the matrix
-     * X.T*X (dimensions NxN)
+     * X.T*X (dimensions NxN).
+     *
+     * Proper PCA should divide this matrix by (#rows-1), but as this
+     * doesn't change the eigenvectors, we can omit this.
      */
-    void lanczos(const Matrix<Scalar> &X, const int M, const int max_it = 10) {
+    void lanczos(const Matrix<Scalar> &X, const int M, const int global_rows,
+            const int max_it = 40) {
 
+        // saved for convenience
         int N = X.cols();
-        int Nr = X.rows();
 
         // Hessenberg matrix
         Matrix<Scalar> H(max_it+1, max_it+1);
+        H.setZero();
 
-        // Matrix for subspace vectors
+        // matrix for subspace vectors
         Matrix<Scalar> V(N, max_it+1);
-
-        // initial vector for Krylov subspace
-        V.col(0).setOnes();
+        V.col(0).setOnes(); // initial vector for Krylov subspace
         V.col(0) /= V.col(0).norm();
 
-        // iterations
+        // define sizes for eigenvalues and -vectors
+        eigenvalues_  = ColVector<Scalar>(M);
+        eigenvectors_ = Matrix<Scalar>(N,M);
+
+        // variables for iterations are defined outside of loop
         Scalar alpha, beta;
+        ColVector<Scalar> w_local(N);
         ColVector<Scalar> w(N);
+        ColVector<Scalar> r_local(N);
+        ColVector<Scalar> r(N);
         ColVector<Scalar> alphas(max_it);
+
         for (int i=0; i<max_it; i++) {
 
-            w = X.transpose() * (X * V.col(i)) / (Nr-1);
+            // Lanczos iterations
+            w_local = X.transpose() * (X * V.col(i));
+            MPI::COMM_WORLD.Allreduce(w_local.data(), w.data(), N,
+                    mpi_helper<Scalar>().type, MPI::SUM);
+
             alpha = V.col(i).transpose() * w;
             w -= V.col(i) * alpha;
             if (i) w -= V.col(i-1) * beta;
@@ -84,24 +110,31 @@ private:
             H(i+1,i) = beta;
 
             // test orthogonality
-            Scalar orth = (V.leftCols(i+2).transpose()*V.leftCols(i+2) - Eigen::MatrixXf::Identity(i+2, i+2)).norm();
-            if (!mpi_rank_) std::cout << "orthogonality norm: " << orth << std::endl;
+            Scalar orth = (V.leftCols(i+2).transpose()*V.leftCols(i+2) -
+                    Eigen::MatrixXf::Identity(i+2, i+2)).norm();
+            //if (!mpi_rank_) std::cout << "Orthogonality norm: " << orth << std::endl;
 
-            //H.cornerUpperLeft(i, i);
+            // only find eigenvectors after subspace is large enough
             if (i>=M) {
-                //std::cout << H.topLeftCorner(i+1,i+1) << std::endl;
-                Eigen::SelfAdjointEigenSolver< Matrix<Scalar> > eigensolver(H.topLeftCorner(i+1,i+1));
-
+                Eigen::SelfAdjointEigenSolver< Matrix<Scalar> >
+                        eigensolver(H.topLeftCorner(i+1,i+1));
                 eigenvalues_  = eigensolver.eigenvalues().bottomRows(M);
-                eigenvectors_ = V.leftCols(i+1) * eigensolver.eigenvectors().rightCols(M);
+                eigenvectors_ = V.leftCols(i+1) *
+                        eigensolver.eigenvectors().rightCols(M);
 
-
-                //Matrix<Scalar> A = eigenvectors_ * eigenvalues_.asDiagonal();
-                    //(X.transpose() * (X * eigenvectors_));
-                //std::cout << A.rows() << "x" << A.cols() << std::endl;
-
-
-                if (!mpi_rank_) std::cout << "eigenvector norm: " << (X.transpose() * (X * eigenvectors_) / (Nr-1) - eigenvectors_ * eigenvalues_.asDiagonal()).norm() << std::endl;
+                // test eigenvector convergence
+                Scalar error = 0;
+                for (int k=0; k<M; k++) {
+                    r_local = X.transpose() * (X * eigenvectors_.col(k));
+                    MPI::COMM_WORLD.Allreduce(r_local.data(), r.data(), N,
+                            mpi_helper<Scalar>().type, MPI::SUM);
+                    Scalar this_error = (r - eigenvectors_.col(k) *
+                            eigenvalues_.row(k)).norm();
+                    if (this_error > error) error = this_error;
+                }
+                error /= global_rows; // make errors independent of data size
+                if (!mpi_rank_) std::cout << "Largest error norm: " << error
+                        << std::endl;
             }
         }
     }

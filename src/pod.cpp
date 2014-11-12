@@ -44,14 +44,13 @@ int main(int argc, char *argv[]) {
 
     // set up input file interface
     InputInterface<Scalar> input(dimensions, reduced);
+    MPI::COMM_WORLD.Barrier(); // for aesthetic output only
     Matrix<Scalar> matrix = input.read(file_name);
 
     // get N largest eigenvectors
-    Decomposition<Scalar> pod(matrix, 5);
+    Decomposition<Scalar> pod(matrix, 5, input.global_rows);
 
     // finalize mpi
     MPI::Finalize();
-
-    // program has run successfully
     return 0;
 }

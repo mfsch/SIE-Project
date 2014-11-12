@@ -9,13 +9,17 @@ template<typename Scalar> class InputInterface {
 
 public:
 
-    InputInterface(const std::vector<int> &dimensions, const std::vector<bool> &reduced) {
+    int global_rows; // number of rows
+
+
+    InputInterface(const std::vector<int> &dimensions, 
+            const std::vector<bool> &reduced) {
 
         // make sure both vectors are the same length
         if (dimensions.size() != reduced.size()) {
             if (!mpi_rank_) std::cerr << "ERROR: The number of "
-                << "dimensions for the argument '--dimensions' and "
-                << "'--reduced' must be the same." << std::endl;
+                    << "dimensions for the argument '--dimensions' and "
+                    << "'--reduced' must be the same." << std::endl;
             exit(1);
         }
         ND_ = dimensions.size();
@@ -25,11 +29,12 @@ public:
         set_up_maps(dimensions, reduced);
 
         // dump some information for debugging
-        dump_info();
+        //dump_info();
     }
 
 
     Matrix<Scalar> read(const std::string &file_name) {
+        // TODO: look at possibility of using Eigen Map for this array
 
         if (!mpi_rank_) std::cout << "Input File: " << file_name << std::endl;
         boost::iostreams::mapped_file_source file(file_name);
@@ -40,8 +45,8 @@ public:
             size_t n_bytes = N_global_ * sizeof(Scalar);
             if (file.size() != n_bytes) {
                 if (!mpi_rank_) std::cerr << "ERROR: File does not match "
-                    << "specified size (expected " << n_bytes << "B, file has "
-                    << file.size() << "B)." << std::endl;
+                        << "specified size (expected " << n_bytes << "B, file "
+                        << "has " << file.size() << "B)." << std::endl;
                 file.close();
                 exit(1);
             }
@@ -56,7 +61,8 @@ public:
             return matrix;
 
         } else {
-            if (!mpi_rank_) std::cerr << "ERROR: Could not open file: " << file_name << std::endl;
+            if (!mpi_rank_) std::cerr << "ERROR: Could not open file: "
+                    << file_name << std::endl;
             exit(1);
         }
     }
@@ -86,6 +92,7 @@ private:
 
 
     /*
+     * Dump information on data ranges and maps.
      * Convenience function for development, no real use.
      */
     void dump_info() {
@@ -109,9 +116,11 @@ private:
 
 
     /*
+     * Dump information on process distribution.
      * Convenience function for development, no real use.
      */
-    void dump_pd_info(const std::vector<int> &pd, const std::vector<int> &dim_index) {
+    void dump_pd_info(const std::vector<int> &pd,
+            const std::vector<int> &dim_index) {
         // process distribution
         if (!mpi_rank_) {
             std::cout << "Process distribution:";
@@ -141,7 +150,8 @@ private:
             if (!reduced[d]) {// do not distribute reduced dimensions
                 pd[d] *= 2;
                 if (N%2) {
-                    if (!mpi_rank_) std::cerr << "ERROR: The number of MPI processes must be divisible by 2." << std::endl;
+                    if (!mpi_rank_) std::cerr << "ERROR: The number of MPI "
+                            << "processes must be divisible by 2." << std::endl;
                     exit(1);
                 }
                 N /= 2;
@@ -152,6 +162,11 @@ private:
     }
 
 
+    /*
+     * This function assigns an index for each dimension to the
+     * current MPI process. This is later used to decide which part
+     * of the data should be read.
+     */
     std::vector<int> indices_along_dimensions(const std::vector<int> &pd) {
         std::vector<int> dim_index(ND_,0);
         int r = mpi_rank_;
@@ -180,7 +195,7 @@ private:
         std::vector<int> pd = process_distribution(reduced);
         std::vector<int> dim_index = indices_along_dimensions(pd);
 
-        dump_pd_info(pd, dim_index); // dump some debug info
+        //dump_pd_info(pd, dim_index); // dump some debug info
 
         count_ = std::vector<int>(ND_);
         start_ = std::vector<int>(ND_);
@@ -201,6 +216,16 @@ private:
     }
 
 
+    /*
+     * Here, we set up maps that will be used for reordering the
+     * data. Each map contains, for each dimension, the distance
+     * between two elements that are subsequent along this
+     * dimension. One map is for the distances in the original data
+     * array, one is for the distances along columns in the reordered
+     * data, and the last is for the distances along rows in this
+     * array. By building these maps, the actual reordering process
+     * becomes quite easy.
+     */
     void set_up_maps(const std::vector<int> &dimensions, const std::vector<bool> &reduced) {
 
         global_map_ = std::vector<int>(ND_);
@@ -210,6 +235,7 @@ private:
         int global_interelement_distance = 1;
         int row_interelement_distance = 1;
         int col_interelement_distance = 1;
+        global_rows = 1; // public member variable
 
         // go through dimensions, fastest varying first
         for (int d=0; d<ND_; d++) {
@@ -225,8 +251,8 @@ private:
                 row_map_[d] = row_interelement_distance;
                 col_map_[d] = 0;
                 row_interelement_distance *= count_[d];
+                global_rows *= dimensions[d];
             }
-
         }
 
         // set matrix size
@@ -234,15 +260,15 @@ private:
         NR_ = row_interelement_distance;
         NC_ = col_interelement_distance;
         N_  = NR_*NC_;
-        std::cout << "Matrix size for rank " << mpi_rank_ << ": " << NR_ << "x" << NC_ << std::endl;
-        MPI::COMM_WORLD.Barrier();
+        std::cout << "Matrix size for rank " << mpi_rank_ << ": " << NR_
+                << "x" << NC_ << std::endl;
     }
 
     
     /*
-     * observations along columns
-     * observations are reduced
-     * -> columns are reduced
+     * This function selects the subset of the data assigned to the
+     * current MPI process and reorders it according to the command
+     * line options. It uses the information built up in the constructor.
      */
     Matrix<Scalar> load_matrix(const Scalar *data) {
 
