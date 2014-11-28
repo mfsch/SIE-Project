@@ -60,7 +60,7 @@ private:
      * doesn't change the eigenvectors, we can omit this.
      */
     void lanczos(const Matrix<Scalar> &X, const int M, const int global_rows,
-            const int max_it = 20) {
+            const int max_it = 20, const Scalar tolerance = 1e-6) {
 
         // saved for convenience
         int N = X.cols();
@@ -135,7 +135,14 @@ private:
                 error /= global_rows; // make errors independent of data size
                 if (!mpi_rank_) std::cout << "Largest error norm: " << error
                         << std::endl;
+
+                if (error < tolerance) {
+                    if (!mpi_rank_) std::cout << "Reached tolerance level " << tolerance
+                            << "." << std::endl;
+                    return;
+                }
             }
         }
+        if (!mpi_rank_) std::cout << "Reached maximum number of iterations without convergence." << std::cout;
     }
 };
