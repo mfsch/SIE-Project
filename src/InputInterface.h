@@ -1,8 +1,8 @@
 #pragma once
 #include <iostream>
-#include <boost/iostreams/device/mapped_file.hpp>
 #include <Eigen/Dense>
 #include <mpi.h>
+#include "InputMap.h"
 #include "matrix_definition.h"
 
 template<typename InputType, typename Scalar> class InputInterface {
@@ -12,8 +12,8 @@ public:
     int global_rows; // number of rows
 
 
-    InputInterface(const std::vector<int> &dimensions, 
-            const std::vector<bool> &reduced) {
+    InputInterface(std::vector<int> dimensions,
+            std::vector<bool> reduced, const int fields) {
 
         // make sure both vectors are the same length
         if (dimensions.size() != reduced.size()) {
@@ -22,7 +22,10 @@ public:
                     << "'--reduced' must be the same." << std::endl;
             exit(1);
         }
-        ND_ = dimensions.size();
+
+        // add additional "dimension" for fields
+        dimensions.push_back(fields);
+        reduced.push_back(false);
 
         // prepare data for reading values
         set_up_ranges(dimensions, reduced);
@@ -33,40 +36,104 @@ public:
     }
 
 
-    Matrix<Scalar> read(const std::string &file_name) {
-        // TODO: look at possibility of using Eigen Map for this array
+    Matrix<Scalar> read(const std::vector<std::string> &filenames, bool multiple) {
 
-        if (!mpi_rank_) std::cout << "Input File: " << file_name << std::endl;
-        boost::iostreams::mapped_file_source file(file_name);
+        // initialize matrix
+        Matrix<Scalar> matrix(NR_, NC_);
+        matrix.setZero(); // TODO: remove this for better performance
 
-        if (file.is_open()) {
+        // unpack filenames and open first file
+        std::vector< std::vector<std::string> > files
+                = unpack_filenames(filenames, multiple);
+        InputMap<InputType> current_data(files[0][0]);
+        //bool reload_file = true;
+        int part_index = 0;
+        int field_index = 0;
+        int file_offset = 0;
 
-            // raise error if sizes do not match
-            size_t n_bytes = N_global_ * sizeof(InputType);
-            if (file.size() != n_bytes) {
-                if (!mpi_rank_) std::cerr << "ERROR: File does not match "
-                        << "specified size (expected " << n_bytes << "B, file "
-                        << "has " << file.size() << "B)." << std::endl;
-                file.close();
-                exit(1);
+        // here, local corresponds to the current MPI process whereas
+        // global corresponds to the combined data of all processes
+        bool global_carry, local_carry;
+        int global_index, row_index, col_index;
+
+        // initialize global dimension indices
+        std::vector<int> global_dim_index(ND_, 0);
+        for (int d=0; d<ND_; d++) {
+            global_dim_index[d] = start_[d];
+        }
+
+        // initialize local dimension indices
+        std::vector<int> local_dim_index(ND_, 0);
+
+        // loop over all values of the current mpi rank
+        for (int i=0; i<N_; i++) {
+
+            // set indices to zero, these are built in the next for loop
+            global_index = 0;
+            row_index = 0;
+            col_index = 0;
+
+            // set carries to true so the last dimension is incremented
+            global_carry = true;
+            local_carry = true;
+
+            // loop over dimensions, fastest varying is the first
+            for (int d=0; d<ND_; d++) {
+
+                // add contribution of current dimension to indices
+                global_index += global_dim_index[d] * global_map_[d];
+                row_index += local_dim_index[d] * row_map_[d];
+                col_index += local_dim_index[d] * col_map_[d];
+
+                // increment global index for next iteration
+                if (global_carry) {
+                    global_dim_index[d]++;
+                    if (global_dim_index[d] == start_[d] + count_[d]) {
+                        global_dim_index[d] = start_[d];
+                    } else {
+                        global_carry = false;
+                    }
+                }
+
+                // increment local index for next iteration
+                if (local_carry) {
+                    local_dim_index[d]++;
+                    if (local_dim_index[d] == count_[d]) {
+                        local_dim_index[d] = 0;
+                    } else {
+                        local_carry = false;
+                    }
+                }
             }
 
-            // create matrix and load data from file
-            if (!mpi_rank_) std::cout << "File opened successfully." << std::endl;
-            const InputType *data = reinterpret_cast<const InputType*>(file.data());
-            if (!mpi_rank_) std::cout << "Reordering matrix... " << std::flush;
-            Matrix<Scalar> matrix = load_matrix(data);
-            if (!mpi_rank_) std::cout << "done" << std::endl;
-            file.close();
-            return matrix;
+            // switch to new file if necessary
+            if (global_index >= file_offset + current_data.size()) {
+                // TODO: add checks for file size
 
-        } else {
-            if (!mpi_rank_) std::cerr << "ERROR: Could not open file: "
-                    << file_name << std::endl;
-            exit(1);
+                // increment field/part index
+                part_index++;
+                if (part_index == files[field_index].size()) {
+                    part_index = 0;
+                    field_index++;
+                }
+
+                if (field_index == files.size()) {
+                    if (!mpi_rank_) std::cerr << "ERROR: Trying to access more "
+                        << "information than available in specified files." << std::endl;
+                    exit(1);
+                }
+
+                file_offset += current_data.size();
+                current_data = InputMap<InputType>(files[field_index][part_index]);
+            }
+
+            // copy value to memory
+            //std::cout << "loading value " << global_index-file_offset << std::endl;
+            //std::cout << "writing value (" << row_index << ", " << col_index << ")" << std::endl;
+            matrix(row_index, col_index) = static_cast<Scalar>(current_data[global_index-file_offset]);
         }
+        return matrix;
     }
-
 
 private:
 
@@ -74,10 +141,8 @@ private:
     const int mpi_size_ = MPI::COMM_WORLD.Get_size();
     const int mpi_rank_ = MPI::COMM_WORLD.Get_rank();
 
-    // set up in constructor
-    int ND_; // number of dimensions
-
     // set up in set_up_ranges()
+    int ND_;                  // number of dimensions
     std::vector<int>  start_; // interelement distances along rows
     std::vector<int>  count_; // interelement distances along rows
 
@@ -147,7 +212,8 @@ private:
         int d = 0;
         std::vector<int> pd(ND_,1);
         while (N>1) {
-            if (!reduced[d]) {// do not distribute reduced dimensions
+            // do not distribute reduced dimensions or dimension for fields
+            if (!reduced[d] && d != ND_-1) {
                 pd[d] *= 2;
                 if (N%2) {
                     if (!mpi_rank_) std::cerr << "ERROR: The number of MPI "
@@ -191,14 +257,16 @@ private:
      */
     void set_up_ranges(const std::vector<int> &dimensions, const std::vector<bool> &reduced) {
 
+        // initialize member variables
+        ND_ = dimensions.size();
+        count_ = std::vector<int>(ND_);
+        start_ = std::vector<int>(ND_);
+
         // define process distribution and get index for current rank
         std::vector<int> pd = process_distribution(reduced);
         std::vector<int> dim_index = indices_along_dimensions(pd);
 
         //dump_pd_info(pd, dim_index); // dump some debug info
-
-        count_ = std::vector<int>(ND_);
-        start_ = std::vector<int>(ND_);
 
         for (int d=0; d<ND_; d++) {
             count_[d] = dimensions[d] / pd[d];
@@ -264,72 +332,72 @@ private:
                 << "x" << NC_ << std::endl;
     }
 
-    
-    /*
-     * This function selects the subset of the data assigned to the
-     * current MPI process and reorders it according to the command
-     * line options. It uses the information built up in the constructor.
-     */
-    Matrix<Scalar> load_matrix(const InputType *data) {
 
-        Matrix<Scalar> matrix(NR_, NC_);
+    std::vector< std::vector<std::string> > unpack_filenames(const std::vector<std::string> &filenames, const bool multiple) {
 
-        bool global_carry, local_carry;
-        int global_index, row_index, col_index;
+        // initialize return variable
+        std::vector< std::vector<std::string> > files(filenames.size());
 
-        // initialize global dimension indices
-        std::vector<int> global_dim_index(ND_, 0);
-        for (int d=0; d<ND_; d++) {
-            global_dim_index[d] = start_[d];
+        //for (auto fn = filenames.begin(); fn != filenames.end(); ++fn) {
+        for (int i=0; i<filenames.size(); i++) {
+
+            if (multiple) { // unpack multiple file names
+
+                // find path prefix
+                std::string prefix = "";
+                size_t pos = filenames[i].find_last_of("/\\");
+                if (pos != std::string::npos) {
+                    prefix = filenames[i].substr(0, pos+1);
+                }
+
+                // read filenames from file
+                std::ifstream ifs(filenames[i]); // open file to read filenames
+                if (ifs.is_open()) {
+                    std::string file;
+                    while (getline(ifs, file)) {
+                        files[i].push_back(prefix + file);
+                    }
+                } else {
+                    if (!mpi_rank_) std::cerr << "ERROR: Could not open file: "
+                            << filenames[i] << std::endl;
+                    exit(1);
+                }
+            } else {
+                files[i].push_back(filenames[i]);
+            }
         }
+        return files;
+    }
 
-        // initialize local dimension indices
-        std::vector<int> local_dim_index(ND_, 0);
 
-        // loop over all values of the current mpi rank
-        for (int i=0; i<N_; i++) {
+    Eigen::Map< const ColVector<InputType> > open_file(std::string &filename) {
 
-            // set indices to zero, these are built in the next for loop
-            global_index = 0;
-            row_index = 0;
-            col_index = 0;
+        if (!mpi_rank_) std::cout << "Opening data input file: " << filename << std::endl;
+        boost::iostreams::mapped_file_source file(filename);
 
-            // set carries to true so the last dimension is incremented
-            global_carry = true;
-            local_carry = true;
+        if (file.is_open()) {
 
-            // loop over dimensions, fastest varying is the first
-            for (int d=0; d<ND_; d++) {
-
-                // add contribution of current dimension to indices
-                global_index += global_dim_index[d] * global_map_[d];
-                row_index += local_dim_index[d] * row_map_[d];
-                col_index += local_dim_index[d] * col_map_[d];
-
-                // increment global index for next iteration
-                if (global_carry) {
-                    global_dim_index[d]++;
-                    if (global_dim_index[d] == start_[d] + count_[d]) {
-                        global_dim_index[d] = start_[d];
-                    } else {
-                        global_carry = false;
-                    }
-                }
-
-                // increment local index for next iteration
-                if (local_carry) {
-                    local_dim_index[d]++;
-                    if (local_dim_index[d] == count_[d]) {
-                        local_dim_index[d] = 0;
-                    } else {
-                        local_carry = false;
-                    }
-                }
+            // get size of data
+            int number_of_values = file.size() / sizeof(InputType);
+            if (file.size() % sizeof(InputType)) {
+                if (!mpi_rank_) std::cerr << "ERROR: Input file '" << filename
+                        << "' does not seem to contain values of the correct type."
+                        << std::endl;
+                exit(1);
             }
 
-            // copy value to memory
-            matrix(row_index, col_index) = static_cast<Scalar>(data[global_index]);
+            // create matrix and load data from file
+            if (!mpi_rank_) std::cout << "File " << filename <<" opened successfully ("
+                    << number_of_values << " values)." << std::endl;
+            const InputType *data = reinterpret_cast<const InputType*>(file.data());
+            Eigen::Map< const ColVector<InputType> > mapped_data(data, number_of_values);
+
+            return mapped_data;
+
+        } else {
+            if (!mpi_rank_) std::cerr << "ERROR: Could not open file: "
+                    << filename << std::endl;
+            exit(1);
         }
-        return matrix;
     }
 };

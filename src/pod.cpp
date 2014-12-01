@@ -18,14 +18,18 @@ int main(int argc, char *argv[]) {
     MPI::Init(argc, argv);
 
     // program options
-    std::string file_name;
+    std::vector<std::string> filenames;
+    bool multiple;
+    bool reduce_variables;
     std::vector<int> dimensions;
     std::vector<bool> reduced;
     namespace po = boost::program_options;
     po::options_description po_desc("Program Options:");
     po_desc.add_options()
         ("help,h", "Show this help message.")
-        ("file,f", po::value<std::string>(&file_name)->required(), "Input file.")
+        ("files,f", po::value< std::vector<std::string> >(&filenames)->multitoken()->required(), "Input files, one file per variable.")
+        ("reduce-variables", po::value<bool>(&reduce_variables), "Treat the different variables as reduced dimensions.")
+        ("multiple,m", po::value<bool>(&multiple), "Use multiple files per variable. When this is set, the input files have to be text files with one filename per line. The files will then be concatenated along the last dimension.")
         ("dimensions,d", po::value< std::vector<int> >(&dimensions)->multitoken()->required(),
             "Length of dimensions, e.g. '256 256 65 200'")
         ("reduced,r", po::value< std::vector<bool> >(&reduced)->multitoken()->required(),
@@ -44,9 +48,9 @@ int main(int argc, char *argv[]) {
     po::notify(po_vm);
 
     // set up input file interface
-    InputInterface<InputType, Scalar> input(dimensions, reduced);
+    InputInterface<InputType, Scalar> input(dimensions, reduced, filenames.size());
     MPI::COMM_WORLD.Barrier(); // for aesthetic output only
-    Matrix<Scalar> matrix = input.read(file_name);
+    Matrix<Scalar> matrix = input.read(filenames, multiple);
 
     // get N largest eigenvectors
     Decomposition<Scalar> pod(matrix, 5, input.global_rows);
