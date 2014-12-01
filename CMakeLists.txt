@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 2.8)
 project(POD)
 
 # add options to C++ flags
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} --std=c++11")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} --std=c++11 -Wall")
 
 # find boost
 find_package(Boost COMPONENTS program_options iostreams REQUIRED)

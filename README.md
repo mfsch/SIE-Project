@@ -8,5 +8,7 @@ To-do list
 ----------
 
 * Add license information to source files.
+* Use exceptions for errors.
+* Add more information to README.
 * Multiple input files.
 * Output to file.
