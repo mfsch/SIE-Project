@@ -107,7 +107,7 @@ public:
             }
 
             // switch to new file if necessary
-            if (global_index >= file_offset + current_data.size()) {
+            while (global_index >= file_offset + current_data.size()) {
                 // TODO: add checks for file size
 
                 // increment field/part index
