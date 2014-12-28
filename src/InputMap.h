@@ -19,7 +19,9 @@ public:
 
         mpi_rank_ = MPI::COMM_WORLD.Get_rank();
 
+#if DEBUG
         if (!mpi_rank_) std::cout << "Opening data input file: " << filename << std::endl;
+#endif
 
         file_ = boost::iostreams::mapped_file_source(filename);
 
@@ -28,21 +30,22 @@ public:
             // get size of data
             size_ = file_.size() / sizeof(InputType);
             if (file_.size() % sizeof(InputType)) {
-                if (!mpi_rank_) std::cerr << "ERROR: Input file '" << filename
+                std::cerr << "ERROR: Input file '" << filename
                         << "' does not seem to contain values of the correct type."
                         << std::endl;
                 exit(1);
             }
 
             // create matrix and load data from file
+#if DEBUG
             if (!mpi_rank_) std::cout << "File " << filename <<" opened successfully ("
                     << size_ << " values)." << std::endl;
+#endif
             data_pointer_ = reinterpret_cast<const InputType*>(file_.data());
             //data_ = Map<InputType>(data_pointer, number_of_values);
 
         } else {
-            if (!mpi_rank_) std::cerr << "ERROR: Could not open file: "
-                    << filename << std::endl;
+            std::cerr << "ERROR: Could not open file: " << filename << std::endl;
             exit(1);
         }
     }
@@ -67,8 +70,9 @@ public:
 
     const InputType& operator[](const int i) {
         if (i >= size_) {
-            if (!mpi_rank_) std::cerr << "ERROR: Trying to access index " << i
+            std::cerr << "ERROR: Trying to access index " << i
                     << " when there are only " << size_ << " values." << std::endl;
+            exit(1);
         }
         return data_pointer_[i];
     }

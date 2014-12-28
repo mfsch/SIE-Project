@@ -2,6 +2,7 @@
 #include <iostream>
 #include <Eigen/Dense>
 #include <mpi.h>
+#include <unistd.h> // usleep
 #include "InputMap.h"
 #include "matrix_definition.h"
 
@@ -31,8 +32,9 @@ public:
         set_up_ranges(dimensions, reduced);
         set_up_maps(dimensions, reduced);
 
-        // dump some information for debugging
-        //dump_info();
+#if DEBUG
+        dump_info(); // dump some debug info
+#endif
     }
 
 
@@ -162,17 +164,21 @@ private:
      */
     void dump_info() {
         // data ranges
+        MPI::COMM_WORLD.Barrier();
+        usleep(10000*mpi_rank_);
         std::cout << "Ranges for rank " << mpi_rank_ << ":";
         for (int d=0; d<ND_; d++) std::cout << "\t" << start_[d] << "-"
             << start_[d] + count_[d] - 1;
         std::cout << std::endl;
-        MPI::COMM_WORLD.Barrier();
 
         // maps
+        MPI::COMM_WORLD.Barrier();
+        usleep(10000*mpi_rank_);
         std::cout << "Row map for rank " << mpi_rank_ << ":";
         for (int d=0; d<ND_; d++) { std::cout << "\t" << row_map_[d]; }
         std::cout << std::endl;
         MPI::COMM_WORLD.Barrier();
+        usleep(10000*mpi_rank_);
         std::cout << "Col map for rank " << mpi_rank_ << ":";
         for (int d=0; d<ND_; d++) { std::cout << "\t" << col_map_[d]; }
         std::cout << std::endl;
@@ -187,14 +193,17 @@ private:
     void dump_pd_info(const std::vector<int> &pd,
             const std::vector<int> &dim_index) {
         // process distribution
+        MPI::COMM_WORLD.Barrier();
+        usleep(10000*mpi_rank_);
         if (!mpi_rank_) {
             std::cout << "Process distribution:";
             for (int i=0;i<ND_;i++) std::cout << "\t" << pd[i];
             std::cout << std::endl;
         }
-        MPI::COMM_WORLD.Barrier();
 
         // dimension indices
+        MPI::COMM_WORLD.Barrier();
+        usleep(10000*mpi_rank_);
         std::cout << "Indices for rank " << mpi_rank_ << ":";
         for (int d=0;d<ND_;d++) std::cout << "\t" << dim_index[d];
         std::cout << std::endl;
@@ -266,7 +275,9 @@ private:
         std::vector<int> pd = process_distribution(reduced);
         std::vector<int> dim_index = indices_along_dimensions(pd);
 
-        //dump_pd_info(pd, dim_index); // dump some debug info
+#if DEBUG
+        dump_pd_info(pd, dim_index); // dump some debug info
+#endif
 
         for (int d=0; d<ND_; d++) {
             count_[d] = dimensions[d] / pd[d];
@@ -328,8 +339,13 @@ private:
         NR_ = row_interelement_distance;
         NC_ = col_interelement_distance;
         N_  = NR_*NC_;
+#if DEBUG
+        MPI::COMM_WORLD.Barrier();
+        usleep(10000*mpi_rank_);
         std::cout << "Matrix size for rank " << mpi_rank_ << ": " << NR_
                 << "x" << NC_ << std::endl;
+        MPI::COMM_WORLD.Barrier();
+#endif
     }
 
 

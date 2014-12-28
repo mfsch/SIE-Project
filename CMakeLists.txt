@@ -19,7 +19,8 @@ set(GTEST_LIBRARY_DIR
     )
 
 # add options to C++ flags
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} --std=c++11 -Wall")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} --std=c++11")
+set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -Wall -DDEBUG")
 
 # find boost
 find_package(Boost COMPONENTS program_options iostreams REQUIRED)
