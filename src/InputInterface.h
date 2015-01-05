@@ -1,10 +1,12 @@
 #pragma once
 #include <iostream>
+#include <fstream>
 #include <Eigen/Dense>
 #include <mpi.h>
 #include <unistd.h> // usleep
 #include "InputMap.h"
 #include "matrix_definition.h"
+#include "mpi_helper.h"
 
 template<typename InputType, typename Scalar> class InputInterface {
 
@@ -135,6 +137,82 @@ public:
             matrix(row_index, col_index) = static_cast<Scalar>(current_data[global_index-file_offset]);
         }
         return matrix;
+    }
+
+    void write_col(ColVector<Scalar> &input, std::string &filename) {
+
+        assert(input.rows() == NR_);
+
+        // create new vector for data
+        ColVector<Scalar> global_vector(global_rows);
+        global_vector.setZero();
+
+        // create vector for indices
+        std::vector<int> dim_index(ND_);
+        for (int d=0; d<ND_; d++) {
+            dim_index[d] = start_[d];
+        }
+
+        // create output map
+        int interelement_distance = 1;
+        std::vector<int> output_map(ND_);
+        for (int d=0; d<ND_; d++) {
+            if (row_map_[d]) {
+                int global_count;
+                if (d == ND_-1) { // last dimension
+                    global_count = N_global_ / global_map_[d];
+                } else {
+                    global_count = global_map_[d+1] / global_map_[d];
+                }
+                output_map[d] = interelement_distance;
+                interelement_distance *= global_count;
+            } else {
+                output_map[d] = 0;
+            }
+        }
+
+        // iterate over local entries
+        for (int i=0; i<NR_; i++) {
+
+            // calculate index in global vector
+            bool carry = true;
+            int global_index = 0;
+            for (int d=0; d<ND_; d++) {
+
+                // add contribution of dimension to global index
+                global_index += output_map[d] * dim_index[d];
+
+                // increment dim_index, skip dimensions along rows
+                if (carry && output_map[d]) {
+                    dim_index[d]++;
+                    if (dim_index[d] == start_[d] + count_[d]) {
+                        dim_index[d] = start_[d];
+                    } else {
+                        carry = false;
+                    }
+                }
+            }
+
+            // copy entry to global vector
+            global_vector[global_index] = input[i];
+        }
+
+        // reduction (sum) of values
+        ColVector<Scalar> reduced_vector(global_rows);
+        MPI::COMM_WORLD.Reduce(global_vector.data(), reduced_vector.data(), global_rows,
+                mpi_helper<Scalar>().type, MPI::SUM, 0); // reduce to rank 0
+
+        // write to file (only rank 0)
+        if (!mpi_rank_) {
+            write_to_file(reduced_vector, filename);
+        }
+    }
+
+    void write_row(RowVector<Scalar> &input, std::string &filename) {
+        assert(input.cols() == NC_);
+        if (!mpi_rank_) {
+            write_to_file(input.transpose(), filename);
+        }
     }
 
 private:
@@ -413,6 +491,19 @@ private:
         } else {
             if (!mpi_rank_) std::cerr << "ERROR: Could not open file: "
                     << filename << std::endl;
+            exit(1);
+        }
+    }
+
+    // This is a simple function to write a column vector to a binary file
+    void write_to_file(const ColVector<Scalar> &data, const std::string &filename) {
+        std::ofstream output_file(filename, std::ios::binary | std::ios::out);
+        if (output_file.is_open()) {
+            output_file.write(reinterpret_cast<const char*>(data.data()),
+                    std::streamsize(data.rows() * sizeof(Scalar)));
+            output_file.close();
+        } else {
+            std::cerr << "ERROR: Could not open file '" << filename << "' for writing." << std::endl;
             exit(1);
         }
     }
