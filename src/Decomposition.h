@@ -107,7 +107,7 @@ private:
         for (int i=0; i<max_it; i++) {
 
             // Lanczos iterations
-            w_local = X.transpose() * (X * V.col(i));
+            w_local = X.transpose() * (X * V.col(i)) / global_rows;
             MPI::COMM_WORLD.Allreduce(w_local.data(), w.data(), N,
                     mpi_helper<Scalar>().type, MPI::SUM);
 
@@ -145,7 +145,7 @@ private:
                 // test eigenvector convergence
                 Scalar error = 0;
                 for (int k=0; k<M; k++) {
-                    r_local = X.transpose() * (X * eigenvectors_.col(k));
+                    r_local = X.transpose() * (X * eigenvectors_.col(k)) / global_rows;
                     MPI::COMM_WORLD.Allreduce(r_local.data(), r.data(), N,
                             mpi_helper<Scalar>().type, MPI::SUM);
                     Scalar this_error = (r - eigenvectors_.col(k) *
@@ -163,6 +163,6 @@ private:
                 }
             }
         }
-        if (!mpi_rank_) std::cout << "Reached maximum number of iterations without convergence." << std::cout;
+        if (!mpi_rank_) std::cout << "Reached maximum number of iterations without convergence." << std::endl;
     }
 };
