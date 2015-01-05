@@ -105,10 +105,12 @@ private:
             H(i,i+1) = beta;
             H(i+1,i) = beta;
 
+#if DEBUG
             // test orthogonality
-            //Scalar orth = (V.leftCols(i+2).transpose()*V.leftCols(i+2) -
-            //        Matrix<Scalar>::Identity(i+2, i+2)).norm();
-            //if (!mpi_rank_) std::cout << "Orthogonality norm: " << orth << std::endl;
+            Scalar orth = (V.leftCols(i+2).transpose()*V.leftCols(i+2) -
+                    Matrix<Scalar>::Identity(i+2, i+2)).norm();
+            if (!mpi_rank_) std::cout << "Orthogonality norm: " << orth << std::endl;
+#endif
 
             // only find eigenvectors after subspace is large enough
             if (i>=M) {
