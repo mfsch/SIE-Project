@@ -24,6 +24,28 @@ public:
         lanczos(X, M, global_rows);
     }
 
+    /*
+     * This function returns the M largest eigenvalues.
+     */
+    RowVector<Scalar> eigenvalues() {
+        return eigenvalues_.reverse(); // return largest to smallest
+    }
+
+    /*
+     * This function extracts the j-th eigenvector.
+     */
+    RowVector<Scalar> eigenvector(const int j) {
+        return eigenvectors_.col(j).transpose();
+    }
+
+    /*
+     * This function projects the data on the j-th eigenvector.
+     */
+    ColVector<Scalar> projection(const Matrix<Scalar> &X, const int i) {
+        int j = eigenvectors_.cols()-1-i; // EVs are in increasing order
+        return X * eigenvectors_.col(j);
+    }
+
 
 private:
 
