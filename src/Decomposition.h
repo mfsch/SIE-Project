@@ -2,11 +2,7 @@
 #include <iostream>
 #include <Eigen/Sparse>
 #include <mpi.h>
-
-// MPI type helper
-template<typename T> struct mpi_helper {};
-template<> struct mpi_helper<float>  { const MPI::Datatype type = MPI::FLOAT; };
-template<> struct mpi_helper<double> { const MPI::Datatype type = MPI::DOUBLE; };
+#include "mpi_helper.h"
 
 
 template<typename Scalar> class Decomposition {
