@@ -23,6 +23,7 @@ int main(int argc, char *argv[]) {
     bool reduce_variables;
     std::vector<int> dimensions;
     std::vector<bool> reduced;
+    std::string output_prefix;
     namespace po = boost::program_options;
     po::options_description po_desc("Program Options:");
     po_desc.add_options()
@@ -34,6 +35,7 @@ int main(int argc, char *argv[]) {
             "Length of dimensions, e.g. '256 256 65 200'")
         ("reduced,r", po::value< std::vector<bool> >(&reduced)->multitoken()->required(),
             "Which dimensions will be reduced in the POD, e.g. '1 0 0 1'")
+        ("output-prefix,o", po::value<std::string>(&output_prefix)->required(), "Input files, one file per variable.")
         ;
     po::variables_map po_vm;
     po::store(po::command_line_parser(argc, argv).options(po_desc).run(), po_vm);
@@ -52,8 +54,26 @@ int main(int argc, char *argv[]) {
     MPI::COMM_WORLD.Barrier(); // for aesthetic output only
     Matrix<Scalar> matrix = input.read(filenames, multiple);
 
-    // get N largest eigenvectors
-    Decomposition<Scalar> pod(matrix, 5, input.global_rows);
+    // find M largest eigenvectors
+    int M = 5;
+    Decomposition<Scalar> pod(matrix, M, input.global_rows);
+
+    // print eigenvalues
+    if (!MPI::COMM_WORLD.Get_rank()) {
+        std::cout << "Eigenvalues:\t";
+        ColVector<Scalar> ev = pod.eigenvalues();
+        for (int i=0; i<M; i++) {
+            std::cout << ev[i] << "\t";
+        }
+        std::cout << std::endl;
+    }
+
+    // project data
+    for (int i=0; i<M; i++) {
+        ColVector<Scalar> v = pod.projection(matrix, i);
+        std::string output_filename = output_prefix + "_" + std::to_string(i+1) + ".out";
+        input.write_col(v, output_filename);
+    }
 
     // finalize mpi
     MPI::Finalize();
