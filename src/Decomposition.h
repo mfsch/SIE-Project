@@ -25,10 +25,16 @@ public:
     }
 
     /*
-     * This function returns the M largest eigenvalues.
+     * This function returns the M largest eigenvalues, normalized 
+     * by the sum of all eigenvalues.
      */
-    RowVector<Scalar> eigenvalues() {
-        return eigenvalues_.reverse(); // return largest to smallest
+    RowVector<Scalar> eigenvalues(Matrix<Scalar> &X) {
+        Scalar trace = 0;
+        for (int i=0; i<X.cols(); i++) {
+            trace += X.col(i).transpose() * X.col(i);
+        }
+        trace /= X.rows();
+        return eigenvalues_.reverse() / trace; // return largest to smallest
     }
 
     /*

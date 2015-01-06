@@ -60,8 +60,8 @@ int main(int argc, char *argv[]) {
 
     // print eigenvalues
     if (!MPI::COMM_WORLD.Get_rank()) {
-        std::cout << "Eigenvalues:\t";
-        ColVector<Scalar> ev = pod.eigenvalues();
+        std::cout << "Normalized eigenvalues:\t";
+        ColVector<Scalar> ev = pod.eigenvalues(matrix);
         for (int i=0; i<M; i++) {
             std::cout << ev[i] << "\t";
         }
