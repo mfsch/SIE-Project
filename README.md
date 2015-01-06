@@ -1,14 +1,91 @@
-SIE-Project
-===========
+Flexible, parallel POD for large data sets
+==========================================
 
-POD of Wall-Bounded Turbulent Flows (EPFL SIE Project, Fall 2014/15)
+*This project has been started as part of an SIE project at [EPFL](http://www.epfl.ch) with the title ‘POD of Wall-Bounded Turbulent Flows’ in the fall semester of the academic year 2014/15.*
+
+
+Setup
+-----
+
+    git clone https://github.com/mfsch/SIE-Project.git
+    cd SIE-Project
+
+    mkdir build && cd build
+    cmake ..
+    make
+
+### Dependencies
+
+Apart from the C++ standard library, the code only depends on two more libraries. [Eigen](http://eigen.tuxfamily.org/) is used for all linear algebra operations. To avoid dependency issues, it is included in the ‘eigen/’ subfolder of this repository. [Boost](http://www.boost.org/) is used for the memory-mapped files. This is expected to be installed on the system and CMake will attempt to find.
+
+The tests are based on the [Google C++ Testing Framework](https://code.google.com/p/googletest/). This is automatically cloned from the SVN repository by CMake.
+
+
+Usage
+-----
+
+    Program Options::
+      -h [ --help ]              Show this help message.
+      -M [ --modes ] arg         Number of eigenvalues and -vectors that are 
+                                 calculated (default: 1).
+      -i [ --input-files ] arg   Input files, one file per variable.
+      -o [ --output-prefix ] arg Prefix for output files.
+      -d [ --dimensions ] arg    Length of dimensions, e.g. '256 256 65 200'
+      -r [ --reduced ] arg       Which dimensions will be reduced in the POD, e.g. 
+                                 '1 0 0 1'
+      -m [ --multiple ]          Use multiple files per variable. When this is set,
+                                 the input files have to be text files with one 
+                                 filename per line. The files will then be 
+                                 concatenated along the last dimension.
+      --reduce-variables         Treat the different variables as reduced 
+                                 dimensions.
+
+### Input Files
+
+The input files are raw binaries. No precautions are taken with respect to endianness. By default, the data type is expected to be `float`, but this can be changed at the beginning of the file `pod.cpp`. The dimensions can be in any order, as the data is reordered according to the `--reduced` argument.
+
+The argument `--input-files` is followed by a list of files, each specifying the data for one variable (u, v, T, ...). If more than one data file is needed for each variable, a text file with one file name per line can be passed instead. In this case, the `--multiple` flag needs to be set.
+
+### Output Files
+
+The program writes one file for each of the M eigenvectors that have been calculated. In each file, it writes the projection of the data onto this eigenvector. These files therefore have all dimensions that haven’t been reduced. If several variables are analyzed together, the files contain the data of all variables, as if ‘variables’ had been added as a new slowest-changing dimension.
+
+### Specifying dimensions
+
+The argument `--dimensions` is a list of integers with the number of entries in each dimension, from the fastest to the slowest changing dimension. If multiple files per variable are used, i.e. if the `--multiple` flag is set, the files are concatenated along the last, slowest changing dimension. In this case, the total number of entries has to be specified. The program will automatically switch to the next file once one file has been read.
+
+### Reduced dimensions
+
+The argument `--reduced` is a list of boolean values specifying which dimensions should be treated as ‘reduced’ dimensions. These are the dimensions that are placed along the rows of the data matrix X. In the context of PCA, this corresponds to the *variables* as opposed to the *observations*. The eigenvectors will have these dimensions and the projections on the eigenvectors will have all other dimensions.
+
+With the flag `--reduce-variables`, the data of different variables will be concatenated along rows, i.e. the variables are treated as ‘reduced’ dimension.
+
+
+Implementation details
+----------------------
+
+The code has two main parts. The first part (mainly the class InputInterface) is responsible for reading the data from multiple files and reorganizing it into a 2D matrix. The second part (mainly the class Decomposition) does a partial eigendecomposition of the covariance matrix, i.e. it calculates the M largest eigenvalues and their eigenvectors.
+
+
+### Data reorganization
+*to be completed*
+
+
+### Eigendecomposition
+The M largest eigenvalues and their eigenvectors are calculated using the Lanczos method. This is an iterative method converging to the largest eigenvalues first. This has the advantage that it can be stopped as soon as the first M eigenvalues are approximated to an acceptable tolerance. In addition, the Lanczos method never requires the actual matrix A but only its application A\*x. This way, the matrix X'X used for POD never has to be computed explicitly.
+
+*to be completed*
 
 
 To-do list
 ----------
 
-* Add license information to source files.
 * Use exceptions for errors.
 * Add more information to README.
-* Multiple input files.
-* Output to file.
+
+
+License
+-------
+This project is distributed under the MIT license. See the accompanying [license file](LICENSE) or [this online copy](http://opensource.org/licenses/MIT) for details.
+
+The Eigen library that is contained in this repository for convenience is primarily MPL2 licensed. Refer to [the Eigen license notice](eigen/COPYING.README) for more details.
