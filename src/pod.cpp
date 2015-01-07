@@ -18,24 +18,27 @@ int main(int argc, char *argv[]) {
     MPI::Init(argc, argv);
 
     // program options
+    int M = 1;
     std::vector<std::string> filenames;
-    bool multiple;
-    bool reduce_variables;
+    std::string output_prefix;
     std::vector<int> dimensions;
     std::vector<bool> reduced;
-    std::string output_prefix;
     namespace po = boost::program_options;
     po::options_description po_desc("Program Options:");
     po_desc.add_options()
         ("help,h", "Show this help message.")
-        ("files,f", po::value< std::vector<std::string> >(&filenames)->multitoken()->required(), "Input files, one file per variable.")
-        ("reduce-variables", po::value<bool>(&reduce_variables), "Treat the different variables as reduced dimensions.")
-        ("multiple,m", po::value<bool>(&multiple), "Use multiple files per variable. When this is set, the input files have to be text files with one filename per line. The files will then be concatenated along the last dimension.")
+        ("modes,M", po::value<int>(&M),
+            "Number of eigenvalues and -vectors that are calculated (default: 1).")
+        ("input-files,i", po::value< std::vector<std::string> >(&filenames)->multitoken()->required(),
+            "Input files, one file per variable.")
+        ("output-prefix,o", po::value<std::string>(&output_prefix)->required(),
+            "Prefix for output files.")
         ("dimensions,d", po::value< std::vector<int> >(&dimensions)->multitoken()->required(),
             "Length of dimensions, e.g. '256 256 65 200'")
         ("reduced,r", po::value< std::vector<bool> >(&reduced)->multitoken()->required(),
             "Which dimensions will be reduced in the POD, e.g. '1 0 0 1'")
-        ("output-prefix,o", po::value<std::string>(&output_prefix)->required(), "Input files, one file per variable.")
+        ("multiple,m", "Use multiple files per variable. When this is set, the input files have to be text files with one filename per line. The files will then be concatenated along the last dimension.")
+        ("reduce-variables", "Treat the different variables as reduced dimensions.")
         ;
     po::variables_map po_vm;
     po::store(po::command_line_parser(argc, argv).options(po_desc).run(), po_vm);
@@ -49,13 +52,18 @@ int main(int argc, char *argv[]) {
     // po:notify tests for valid arguments, so do this after help
     po::notify(po_vm);
 
+    // check whether arguments are present
+    bool multiple = false;
+    if (po_vm.count("multiple")) multiple = true;
+    bool reduce_variables = false;
+    if (po_vm.count("reduce-variables")) reduce_variables = true;
+
     // set up input file interface
     InputInterface<InputType, Scalar> input(dimensions, reduced, filenames.size());
     MPI::COMM_WORLD.Barrier(); // for aesthetic output only
     Matrix<Scalar> matrix = input.read(filenames, multiple);
 
     // find M largest eigenvectors
-    int M = 5;
     Decomposition<Scalar> pod(matrix, M, input.global_rows);
 
     // print eigenvalues
