@@ -66,9 +66,27 @@ Implementation details
 
 The code has two main parts. The first part (mainly the class InputInterface) is responsible for reading the data from multiple files and reorganizing it into a 2D matrix. The second part (mainly the class Decomposition) does a partial eigendecomposition of the covariance matrix, i.e. it calculates the M largest eigenvalues and their eigenvectors.
 
-
 ### Data reorganization
-*to be completed*
+
+The data to be analyzed by POD is typically multi-dimensional. A 3D simulation will produce four-dimensional (x, y, z, and t) output files. In addition, we can combine different variables (e.g. u, v, T, p...) and analyze them together. In this case, the variables are like an additional dimension of the data.
+
+POD is based on two-dimensional data. We can think of them as *x* and *t* and they correspond to the rows and columns of the data matrix. In the context of PCA, we can think of them as *variables* and *observations*, where each observation contains a value for all of the variables. Each of the original dimensions can be treated as part of *x* and *t*, where *x* is placed along the columns and *t* is placed along the rows of the data matrix. The eigenvectors then have the length of *t* whereas the projections have the length of *x*. In the code, the dimensions treated as *t* are called *reduced* dimensions.
+
+In addition, the data has to be split up between the different MPI processes. This is done along columns, i.e. each MPI rank gets some of the rows of the data matrix. This has the advantage that in order to calculate X'\*X\*v, each rank can do this computation locally and the result is simply summed up with an MPI Allreduce. The way the data is currently partitioned, it is split along all dimensions that are not *reduced*, execpt for the variables, which are never split. This might not actually be necessary and splitting along just one of these dimensions might be enough. Such a change might simplify the code a bit, so it might be worth giving it a try.
+
+#### Selection of data range
+
+Each MPI rank has to decide which part of the data is read. As mentioned above, this could probably also be done in a simpler way, by only splitting the data along one dimension. However, the current implementation splits the data along all dimensions that are not *reduced*.
+
+In a first step, each dimension is assigned a number of processes, i.e. the number of times it is split. The product of these numbers has to be equal to the total number of MPI processes. The code assumes the total number of MPI processes to be a power of two, and each dimension is assigned a number of processes that is a power of two. First, all *reduced* dimensions are assigned the number 1. The other dimensions start with 1 as well, then they get in turn multiplied by 2 while the number of remaining processes is divided by two. This stops when the remaining processes are down to 1.
+
+In a second step, each process is assigned assigned an index along each of the dimensions, starting with \[0 0 ... 0\], \[1 0 .. 0\], and so on. This basically corresponds to a conversion of the MPI rank to a number with a different basis for each digit. This number is then used to select the range of entries that are read along each dimension.
+
+#### Reordering the data
+
+The data is reordered with the help of several *maps*. These are short lists of integers that represent, for each dimension, the distance between two consecutive elements along this dimension. One such map is created for the input data. In this case, the number simply represents the product of the length of all faster changing dimensions in the input array. The second map is for the rows of the restructured data. There, the number is the product of the length of all faster changing *reduced* dimensions. The dimensions that aren’t reduced get an entry of 0. The third map is for the columns of the restructured data. There, the number is the product of the length of all faster changing dimensions that are not reduced. The length here is not the total length but rather the number of entries that have been assigned to the current MPI process.
+
+With these maps, the actual reordering of the data becomes quite simple. All we need to do is keep an index along each dimension. We can then find the corresponding index of the input array as well as the row and column of the restructured matrix by multiplying the index along each dimension with the corresponding map and calculating their sum.
 
 
 ### Eigendecomposition
