@@ -92,14 +92,17 @@ With these maps, the actual reordering of the data becomes quite simple. All we 
 ### Eigendecomposition
 The M largest eigenvalues and their eigenvectors are calculated using the Lanczos method. This is an iterative method converging to the largest eigenvalues first. This has the advantage that it can be stopped as soon as the first M eigenvalues are approximated to an acceptable tolerance. In addition, the Lanczos method never requires the actual matrix A but only its application A\*x. This way, the matrix X'X used for POD never has to be computed explicitly.
 
-*to be completed*
+The Lanczos algorithm basically works in the following way: Suppose we want to find the eigenvalue and -vectors of a matrix A. We start with a random vector x. Then we keep multiplying it with A, saving each intermediate result. This way, we build the Krylov subspace \{x, Ax, A²x, A³x, ...\}. It can be shown that this subspace contains increasingly good approximations for the largest eigenvalues of A.
+
+The vectors \{x, Ax, ...\} are not a useful basis, as they become increasingly colinear, which leads to numerical problems. Instead, we apply a Gram-Schmidt orthogonalization at each step to keep the basis orthogonal. We save the coefficients used for this orthogonalization in a separate matrix H as it can be shown that this matrix then corresponds to the projection of A into the Krylov subspace. As A and H are similar, we can simply find the eigenvalues of H to approximate the eigenvalues of A. The corresponding eigenvectors of A can also be derived from the eigenvectors of H.
+
+The above description is actually a more general case and is called Arnoldi method. The Lanczos method is the special case when A is Hermetian, in which case the algorithm is a bit simpler. As the covariance matrix is allways symmetric positive definite, we can apply the Lanczos method. In this case, H becomes tridiagonal and in theory, we don’t need to save all vectors \{x, Ax, A²x, ...\} but only the last ones. However, the method has stability problems if we don’t keep the full set so we can reorthogonalize the last vector with respect to all earlier vectors.
 
 
 To-do list
 ----------
 
 * Use exceptions for errors.
-* Add more information to README.
 
 
 License
