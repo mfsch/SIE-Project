@@ -1,4 +1,5 @@
 #pragma once
+#include <cstdlib>
 #include <iostream>
 #include <Eigen/Sparse>
 #include <mpi.h>
@@ -21,6 +22,7 @@ public:
         subtract_mean(X, global_rows);
         if (!mpi_rank_) std::cout << "done" << std::endl;
 
+        std::srand(135595784); // identical random seed for all mpi ranks
         lanczos(X, M, global_rows);
     }
 
@@ -95,7 +97,7 @@ private:
 
         // matrix for subspace vectors
         Matrix<Scalar> V(N, max_it+1);
-        V.col(0).setOnes(); // initial vector for Krylov subspace
+        V.col(0).setRandom(); // initial vector for Krylov subspace
         V.col(0) /= V.col(0).norm();
 
         // define sizes for eigenvalues and -vectors
