@@ -7,8 +7,8 @@ Flexible, parallel POD for large data sets
 Setup
 -----
 
-    git clone https://github.com/mfsch/SIE-Project.git
-    cd SIE-Project
+    git clone https://github.com/mfsch/pod.git
+    cd pod
 
     mkdir build && cd build
     cmake ..
